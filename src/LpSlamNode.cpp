@@ -414,7 +414,7 @@ private:
         // http://docs.ros.org/en/latest/api/tf2_ros/html/c++/classtf2__ros_1_1BufferInterface.html#a12d0bda7d7533f199e94dae4bb46ba7a
         // Use this method to lookup the transform of the laser data at time t_l to the camera pose at t_c
 
-        RCLCPP_DEBUG(get_logger(), "Received %u laser scans with min %f max %f angle start %f angle end %f",
+        RCLCPP_DEBUG(get_logger(), "Received %lu laser scans with min %f max %f angle start %f angle end %f",
             msg->ranges.size(), msg->range_min, msg->range_max, msg->angle_min, msg->angle_max);
 
         // wait up to 100 ms for transform to arrive, parameter is nanoseconds
@@ -498,7 +498,7 @@ public:
         LpSlamRequestNavTransformation invalid_res;
         invalid_res.valid = false;
 
-        RCLCPP_DEBUG(get_logger(), "Requested nav transform for seconds %d nseconds %d", ros_time.seconds, ros_time.nanoseconds);
+        RCLCPP_DEBUG(get_logger(), "Requested nav transform for seconds %d nseconds %ld", ros_time.seconds, ros_time.nanoseconds);
         
         auto lmdMapName = [this](LpSlamNavDataFrame frame_enum )  {
             if (frame_enum == LpSlamNavDataFrame_Camera) {
@@ -541,7 +541,7 @@ public:
         LpSlamGlobalStateInTime * odometry,
         LpSlamGlobalStateInTime * map ) {
 
-        RCLCPP_DEBUG(get_logger(), "Requested nav data for time %i %u Not is %i %u", for_ros_time.seconds, for_ros_time.nanoseconds);
+        RCLCPP_DEBUG(get_logger(), "Requested nav data for time %i %lu", for_ros_time.seconds, for_ros_time.nanoseconds);
 
         auto navTime = lpSlamRosTime(for_ros_time);
 
