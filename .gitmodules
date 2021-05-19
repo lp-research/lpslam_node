@@ -1,0 +1,3 @@
+[submodule "lpslam"]
+	path = lpslam
+	url = git@github.com:lp-research/lpslam.git
