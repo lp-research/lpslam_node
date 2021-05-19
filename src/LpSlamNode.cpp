@@ -418,7 +418,7 @@ private:
             msg->ranges.size(), msg->range_min, msg->range_max, msg->angle_min, msg->angle_max);
 
         // wait up to 100 ms for transform to arrive, parameter is nanoseconds
-        auto transformTimeout = rclcpp::Duration(0.1 * std::pow(10.0, 9.0));
+        auto transformTimeout = rclcpp::Duration::from_nanoseconds(0.1 * std::pow(10.0, 9.0));
 
         std::optional<geometry_msgs::msg::TransformStamped> odomTransform;
         try {
@@ -512,7 +512,7 @@ public:
             }
         };
 
-        const auto transformTimeout = rclcpp::Duration(0.1 * std::pow(10.0, 9.0));
+        const auto transformTimeout = rclcpp::Duration::from_nanoseconds(0.1 * std::pow(10.0, 9.0));
 
         std::optional<geometry_msgs::msg::TransformStamped> transform;
         auto from_frame_id = lmdMapName(from_frame);
@@ -546,7 +546,7 @@ public:
         auto navTime = lpSlamRosTime(for_ros_time);
 
         // wait up to 100 ms for transform to arrive, parameter is nanoseconds
-        auto transformTimeout = rclcpp::Duration(0.1 * std::pow(10.0, 9.0));
+        auto transformTimeout = rclcpp::Duration::from_nanoseconds(0.1 * std::pow(10.0, 9.0));
 
         std::optional<geometry_msgs::msg::TransformStamped> odomTransform;
         try {
