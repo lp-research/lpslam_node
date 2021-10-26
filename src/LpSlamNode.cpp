@@ -710,6 +710,8 @@ public:
             -invRot.y(),
             invRot.x(), 0.1};
 
+        ros_state.state.valid = true;
+
         return ros_state;
     }
 
