@@ -14,12 +14,15 @@
 #include <geometry_msgs/msg/transform_stamped.h>
 #include <geometry_msgs/msg/pose_stamped.h>
 #include <geometry_msgs/msg/pose_stamped.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/time_synchronizer.h>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/map_meta_data.hpp>
 #include <lpslam_interfaces/msg/lp_slam_status.hpp>
 
 
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "LpSlamManager.h"
 
@@ -115,22 +118,37 @@ public:
                 std::bind(&LpSlamNode::laserscan_callback, this, std::placeholders::_1));
         }
 
-        // allow for relaxed QoS for image in order to match
-        // the topic settings
-        rclcpp::QoS video_qos(10);
-        video_qos.keep_last(10);
-        video_qos.best_effort();
-        video_qos.durability_volatile();
-
-        m_leftImageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
-            left_image_topic, video_qos,
-            std::bind(&LpSlamNode::image_callback_left, this, std::placeholders::_1));
-
         if (m_isStereoCamera && !m_isCombinedStereoImage)
         {
-            m_rightImageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
-                right_image_topic, video_qos,
-                std::bind(&LpSlamNode::image_callback_right, this, std::placeholders::_1));
+            // allow for relaxed QoS for image in order to match
+            // the topic settings
+            rmw_qos_profile_t video_qos = rmw_qos_profile_sensor_data;
+            video_qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+            video_qos.depth = 10;
+            video_qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+            video_qos.durability = RMW_QOS_POLICY_DURABILITY_VOLATILE;
+
+            m_leftImageSubscription =
+                std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+                    this, left_image_topic, video_qos);
+            m_rightImageSubscription =
+                std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+                    this, right_image_topic, video_qos);
+            m_synchronizer = std::make_shared<
+                message_filters::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image>>(
+                    *m_leftImageSubscription, *m_rightImageSubscription, 10);
+            m_synchronizer->registerCallback(&LpSlamNode::image_callback_stereo, this);
+        } else {
+            // allow for relaxed QoS for image in order to match
+            // the topic settings
+            rclcpp::QoS video_qos(10);
+            video_qos.keep_last(10);
+            video_qos.best_effort();
+            video_qos.durability_volatile();
+
+            m_imageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
+                left_image_topic, video_qos,
+                std::bind(&LpSlamNode::image_callback_left, this, std::placeholders::_1));
         }
 
         m_pointcloudPublisher = this->create_publisher<sensor_msgs::msg::PointCloud2>(pointcloud_topic, 1);
@@ -393,24 +411,10 @@ private:
     }
 
     // Callbacks
-    void image_callback_right(const sensor_msgs::msg::Image::SharedPtr msg)
-    {
-        if (check_and_dispatch(msg, m_leftImageBuffer, m_leftImageTimestamp, m_leftImageMutex, false))
-        {
-            return;
-        }
-
-        {
-            std::scoped_lock lock(m_rightImageMutex);
-            m_rightImageBuffer.resize(msg->step * msg->height);
-            std::memcpy(m_rightImageBuffer.data(), msg->data.data(),
-                        m_rightImageBuffer.size());
-            m_rightImageTimestamp = msg->header.stamp;
-        }
-    }
-
     void image_callback_left(const sensor_msgs::msg::Image::SharedPtr msg)
     {
+        // ToDo: Both (mono and stereo from one ros-topic) functionalities do not work
+        // in current implementation. This need to be fixed or remained only mono-image support.
         if (check_and_dispatch(msg, m_rightImageBuffer, m_rightImageTimestamp, m_rightImageMutex, true))
         {
             return;
@@ -422,6 +426,36 @@ private:
                         m_leftImageBuffer.size());
             m_leftImageTimestamp = msg->header.stamp;
         }
+    }
+
+    void image_callback_stereo(
+        const sensor_msgs::msg::Image::SharedPtr left,
+        const sensor_msgs::msg::Image::SharedPtr right)
+    {
+        LpSlamImageDescription imgDesc;
+        imgDesc.structure = LpSlamImageStructure_Stereo_TwoBuffer;
+        if (left->encoding == "mono8" ) {
+            imgDesc.format = LpSlamImageFormat_8UC1;
+        } else {
+            imgDesc.format = LpSlamImageFormat_8UC3;
+        }
+        imgDesc.image_conversion = LpSlamImageConversion_None;
+        imgDesc.height = left->height;
+        imgDesc.width = left->width;
+        imgDesc.imageSize = left->step * left->height;
+        imgDesc.hasRosTimestamp = 1;
+        imgDesc.rosTimestamp.seconds = left->header.stamp.sec;
+        imgDesc.rosTimestamp.nanoseconds = left->header.stamp.nanosec;
+
+        // slam timestamp
+        uint64_t slam_ts = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+
+        // forward to library
+        m_slam.addStereoImageFromBuffer(0,
+                                        // timestamp
+                                        slam_ts,
+                                        left->data.data(), right->data.data(),
+                                        imgDesc);
     }
 
     void laserscan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
@@ -751,8 +785,11 @@ public:
 
     // subscribers
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_laserScanSubsription;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_leftImageSubscription;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_rightImageSubscription;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_imageSubscription;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> m_leftImageSubscription;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> m_rightImageSubscription;
+    std::shared_ptr<message_filters::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image>>
+            m_synchronizer;
 
     // TF2 handlers
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
