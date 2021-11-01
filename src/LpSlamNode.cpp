@@ -62,6 +62,7 @@ public:
         RCLCPP_INFO(get_logger(), "LpSlam node started");
 
         m_configFile = this->declare_parameter<std::string>("lpslam_config", "");
+        m_lpSlamLogFile = this->declare_parameter<std::string>("lpslam_log_file", "lpslam.log");
         m_writeLpSlamLog = this->declare_parameter<bool>("write_lpslam_log", false);
         m_isStereoCamera = this->declare_parameter<bool>("stereo_camera", true);
         m_consumeLaser = this->declare_parameter<bool>("consume_laser", true);
@@ -76,11 +77,20 @@ public:
         auto useSimTime = this->get_parameter( "use_sim_time" ).as_bool();
         RCLCPP_INFO(get_logger(), "LpSlamNode is using sim time: %s", useSimTime ? "yes": "no");
 
+        const std::string left_image_topic = this->declare_parameter<std::string>(
+            "left_image_topic", "left_image_raw");
+        const std::string right_image_topic = this->declare_parameter<std::string>(
+            "right_image_topic", "right_image_raw");
         const auto map_name = this->declare_parameter<std::string>("map_name", "/map");
+        const std::string laserscan_topic = this->declare_parameter<std::string>("laserscan_topic", "scan");
 
         const std::string pointcloud_topic = this->declare_parameter<std::string>("pointcloud_topic", "slam_features");
         const auto pointcloud_rate = this->declare_parameter<int>("pointcloud_rate", 10);
         const auto map_rate = this->declare_parameter<int>("map_rate", 5);
+
+        const std::string lpslam_status_topic = this->declare_parameter<std::string>(
+            "lpslam_status_topic", "lpslam_status");
+
         m_use_odometry = this->declare_parameter<bool>("use_odometry", true);
 
         const auto transformToleranceFloat = this->declare_parameter<float>("transform_tolerance", 0.5);
@@ -98,8 +108,9 @@ public:
         auto default_qos = rclcpp::QoS(rclcpp::SystemDefaultsQoS());
         
         if (m_consumeLaser) { 
-            m_laserScanSubsription = this->create_subscription<sensor_msgs::msg::LaserScan>("scan",
-                default_qos, std::bind(&LpSlamNode::laserscan_callback, this, std::placeholders::_1));
+            m_laserScanSubsription = this->create_subscription<sensor_msgs::msg::LaserScan>(
+                laserscan_topic, default_qos,
+                std::bind(&LpSlamNode::laserscan_callback, this, std::placeholders::_1));
         }
 
         // allow for relaxed QoS for image in order to match
@@ -110,12 +121,14 @@ public:
         video_qos.durability_volatile();
 
         m_leftImageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
-            "left_image_raw", video_qos, std::bind(&LpSlamNode::image_callback_left, this, std::placeholders::_1));
+            left_image_topic, video_qos,
+            std::bind(&LpSlamNode::image_callback_left, this, std::placeholders::_1));
 
         if (m_isStereoCamera && !m_isCombinedStereoImage)
         {
             m_rightImageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
-                "right_image_raw", video_qos, std::bind(&LpSlamNode::image_callback_right, this, std::placeholders::_1));
+                right_image_topic, video_qos,
+                std::bind(&LpSlamNode::image_callback_right, this, std::placeholders::_1));
         }
 
         m_pointcloudPublisher = this->create_publisher<sensor_msgs::msg::PointCloud2>(pointcloud_topic, 1);
@@ -124,14 +137,15 @@ public:
             rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
         m_mapMetaDataPublisher = this->create_publisher<nav_msgs::msg::MapMetaData>(map_name + "_metadata",
             rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
-        m_slamStatusPublisher = this->create_publisher<lpslam_interfaces::msg::LpSlamStatus>("lpslam_status",
+        m_slamStatusPublisher = this->create_publisher<lpslam_interfaces::msg::LpSlamStatus>(
+            lpslam_status_topic,
             rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
 
         m_tfBroadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
         if (m_writeLpSlamLog)
         {
-            m_slam.logToFile("lpslam.log");
+            m_slam.logToFile(m_lpSlamLogFile.c_str());
         }
         m_slam.setLogLevel(LpSlamLogLevel_Debug);
         RCLCPP_INFO_STREAM(get_logger(), "Loading LpSlam configuration from " << m_configFile);
@@ -769,6 +783,7 @@ public:
 
     // configuration variables
     std::string m_configFile;
+    std::string m_lpSlamLogFile;
     bool m_use_odometry;
     bool m_writeLpSlamLog;
     bool m_isStereoCamera;
