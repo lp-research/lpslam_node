@@ -25,6 +25,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(lpslam_interfaces REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 SET(LPSLAM_BUILD_ROS2 ON CACHE BOOL "build with ROS2 support")
 SET(LPSLAM_BUILD_OPENVSLAM ON CACHE BOOL "enable")

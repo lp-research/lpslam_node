@@ -7,6 +7,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
@@ -27,10 +28,14 @@
 #include <memory>
 #include <string>
 #include <iostream>
+#include <fstream>
+#include <cstdio>
 #include <optional>
 #include <mutex>
 #include <algorithm>
 #include <chrono>
+
+#include <yaml-cpp/yaml.h>
 
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -61,6 +66,8 @@ public:
     {
         RCLCPP_INFO(get_logger(), "LpSlam node started");
 
+        m_vSlamMethod = "OpenVSLAM";
+
         m_configFile = this->declare_parameter<std::string>("lpslam_config", "");
         m_lpSlamLogFile = this->declare_parameter<std::string>("lpslam_log_file", "lpslam.log");
         m_writeLpSlamLog = this->declare_parameter<bool>("write_lpslam_log", false);
@@ -81,6 +88,9 @@ public:
             "left_image_topic", "left_image_raw");
         const std::string right_image_topic = this->declare_parameter<std::string>(
             "right_image_topic", "right_image_raw");
+        const std::string camera_info_topic = this->declare_parameter<std::string>(
+            "camera_info_topic", "");
+        m_cameraFps = this->declare_parameter<double>("camera_fps", 5.0);
         const auto map_name = this->declare_parameter<std::string>("map_name", "/map");
         const std::string laserscan_topic = this->declare_parameter<std::string>("laserscan_topic", "scan");
 
@@ -90,6 +100,32 @@ public:
 
         const std::string lpslam_status_topic = this->declare_parameter<std::string>(
             "lpslam_status_topic", "lpslam_status");
+
+        // OpenVSLAM parameters
+        m_openVSlam_maxNumKeypoints = this->declare_parameter<int>(
+            m_vSlamMethod + "." + "max_num_keypoints", 1000);
+        m_openVSlam_iniMaxNumKeypoints = this->declare_parameter<int>(
+            m_vSlamMethod + "." + "ini_max_num_keypoints", 2000);
+        m_openVSlam_scaleFactor = this->declare_parameter<double>(
+            m_vSlamMethod + "." + "scale_factor", 1.2);
+        m_openVSlam_numLevels = this->declare_parameter<int>(
+            m_vSlamMethod + "." + "num_levels", 8);
+        m_openVSlam_iniFastThreshold = this->declare_parameter<int>(
+            m_vSlamMethod + "." + "ini_fast_threshold", 20);
+        m_openVSlam_minFastThreshold = this->declare_parameter<int>(
+            m_vSlamMethod + "." + "min_fast_threshold", 7);
+        m_openVSlam_depthThreshold = this->declare_parameter<double>(
+            m_vSlamMethod + "." + "depth_threshold", 40.0);
+        m_openVSlam_depthmapFactor = this->declare_parameter<double>(
+            m_vSlamMethod + "." + "depthmap_factor", 1.0);
+        m_openVSlam_mappingBaselineDistThr = this->declare_parameter<double>(
+            m_vSlamMethod + "." + "mapping_baseline_dist_thr", 0.1);
+        m_openVSlam_pangolinViewerFps  = this->declare_parameter<double>(
+            m_vSlamMethod + "." + "pangolin_viewer_fps", 10.0);
+
+        m_openVSlamYaml = "";
+        m_lpSlamJson = m_configFile;
+        camera_configured_ = false;
 
         m_use_odometry = this->declare_parameter<bool>("use_odometry", true);
 
@@ -131,6 +167,13 @@ public:
                 std::bind(&LpSlamNode::image_callback_right, this, std::placeholders::_1));
         }
 
+        if (camera_info_topic.length() > 0)
+        {
+            m_cameraInfoSubscription = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+                camera_info_topic, video_qos,
+                std::bind(&LpSlamNode::camera_info_callback, this, std::placeholders::_1));
+        }
+
         m_pointcloudPublisher = this->create_publisher<sensor_msgs::msg::PointCloud2>(pointcloud_topic, 1);
 
         m_occGridPublisher = this->create_publisher<nav_msgs::msg::OccupancyGrid>(map_name,
@@ -143,22 +186,11 @@ public:
 
         m_tfBroadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-        if (m_writeLpSlamLog)
-        {
-            m_slam.logToFile(m_lpSlamLogFile.c_str());
+        if (camera_info_topic.length() == 0) {
+            // Camera calibration files won't be read from topic.
+            // Starting SLAM manually.
+            start_slam();
         }
-        m_slam.setLogLevel(LpSlamLogLevel_Debug);
-        RCLCPP_INFO_STREAM(get_logger(), "Loading LpSlam configuration from " << m_configFile);
-        m_slam.readConfigurationFile(m_configFile.c_str());
-
-        m_slam.addOnReconstructionCallback(&outside_lpslam_OnReconstructionCallback, this);
-        m_slam.addRequestNavTransformation(&outside_lpslam_RequestNavTransformationCallback, this);
-        if (m_use_odometry) {
-            m_slam.addRequestNavDataCallback(&outside_lpslam_RequestNavDataCallback, this);
-        }
-
-        m_slam.start();
-        RCLCPP_INFO(get_logger(), "LpSlam processing starting");
 
         // start publishing point cloud
         auto ros_clock = rclcpp::Clock::make_shared();
@@ -208,6 +240,26 @@ public:
     }
 
 private:
+
+    void start_slam()
+    {
+        if (m_writeLpSlamLog)
+        {
+            m_slam.logToFile(m_lpSlamLogFile.c_str());
+        }
+        m_slam.setLogLevel(LpSlamLogLevel_Debug);
+        RCLCPP_INFO_STREAM(get_logger(), "Loading LpSlam configuration from " << m_lpSlamJson);
+        m_slam.readConfigurationFile(m_lpSlamJson.c_str());
+
+        m_slam.addOnReconstructionCallback(&outside_lpslam_OnReconstructionCallback, this);
+        m_slam.addRequestNavTransformation(&outside_lpslam_RequestNavTransformationCallback, this);
+        if (m_use_odometry) {
+            m_slam.addRequestNavDataCallback(&outside_lpslam_RequestNavDataCallback, this);
+        }
+
+        m_slam.start();
+        RCLCPP_INFO(get_logger(), "LpSlam processing starting");
+    }
 
     // according to https://github.com/ros2/common_interfaces/blob/master/nav_msgs/msg/OccupancyGrid.msg
     // http://docs.ros.org/en/api/nav_msgs/html/msg/MapMetaData.html
@@ -390,6 +442,120 @@ private:
         return true;
     }
 
+    bool make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
+    {
+        // Form OpenVSLAM config YAML
+        YAML::Node configNode;
+
+        if (msg->distortion_model != "plumb_bob") {
+            RCLCPP_ERROR(
+                get_logger(),
+                "%s distortion model is not supported",
+                msg->distortion_model.c_str());
+            return false;
+        }
+
+        configNode["Camera"]["name"] = "LpSlam";
+        if (m_isStereoCamera)
+        {
+            configNode["Camera"]["setup"] = "stereo";
+        } else {
+            configNode["Camera"]["setup"] = "monocular";
+        }
+        configNode["Camera"]["model"] = "perspective";
+
+        configNode["Camera"]["fx"] = msg->k[0];  // k[0,0]
+        configNode["Camera"]["fy"] = msg->k[4];  // k[1,1]
+        configNode["Camera"]["cx"] = msg->k[2];  // k[0,2]
+        configNode["Camera"]["cy"] = msg->k[5];  // k[1,2]
+
+        // For perspective model
+        configNode["Camera"]["k1"] = 0.0;
+        configNode["Camera"]["k2"] = 0.0;
+        configNode["Camera"]["k3"] = 0.0;
+        configNode["Camera"]["p1"] = 0.0;
+        configNode["Camera"]["p2"] = 0.0;
+
+        if (m_isStereoCamera) {
+            configNode["Camera"]["focal_x_baseline"] = -msg->p[3];  // -p[0,3]
+        }
+
+        configNode["Camera"]["fps"] = m_cameraFps;
+        configNode["Camera"]["cols"] = msg->width;
+        configNode["Camera"]["rows"] = msg->height;
+
+        configNode["Feature"]["max_num_keypoints"] = m_openVSlam_maxNumKeypoints;
+        configNode["Feature"]["ini_max_num_keypoints"] = m_openVSlam_iniMaxNumKeypoints;
+        configNode["Feature"]["scale_factor"] = m_openVSlam_scaleFactor;
+        configNode["Feature"]["num_levels"] = m_openVSlam_numLevels;
+        configNode["Feature"]["ini_fast_threshold"] = m_openVSlam_iniFastThreshold;
+        configNode["Feature"]["min_fast_threshold"] = m_openVSlam_minFastThreshold;
+
+        configNode["depth_threshold"] = m_openVSlam_depthThreshold;
+        configNode["depthmap_factor"] = m_openVSlam_depthmapFactor;
+
+        configNode["Mapping"]["baseline_dist_thr"] = m_openVSlam_mappingBaselineDistThr;
+
+        configNode["PangolinViewer"]["fps"] = m_openVSlam_pangolinViewerFps;
+
+        // Write formed YAML to file
+        m_openVSlamYaml = std::tmpnam(nullptr);
+        m_openVSlamYaml += ".yaml";
+        try {
+            std::ofstream yaml(m_openVSlamYaml);
+            yaml << configNode << std::endl;
+            yaml.close();
+        } catch (std::exception & e) {
+            RCLCPP_ERROR(
+                get_logger(), "Can not write OpenVSLAM config to %s: %s",
+                m_openVSlamYaml.c_str(), e.what());
+            return false;
+        }
+        RCLCPP_INFO(get_logger(), "%s OpenVSLAM config has been prepared", m_openVSlamYaml.c_str());
+        return true;
+    }
+
+    bool make_lpslam_config()
+    {
+        if (m_openVSlamYaml.length() == 0)
+        {
+            RCLCPP_ERROR(get_logger(), "No OpenVSLAM config-file prepared");
+            return false;
+        }
+
+        // Write formed YAML to file
+        m_lpSlamJson = std::tmpnam(nullptr);
+        m_lpSlamJson += ".json";
+        try {
+            // Open m_configFile for reading
+            std::ifstream in_json(m_configFile);
+            std::string ln;
+            // And m_lpSlamJson for writing
+            std::ofstream out_json(m_lpSlamJson);
+            size_t config_pos;
+            // Replace "configFromFile" field with m_openVSlamYaml
+            while (std::getline(in_json, ln))
+            {
+                config_pos = ln.find("configFromFile");
+                if (config_pos != std::string::npos)
+                {
+                    ln = ln.substr(0, config_pos) +
+                        "configFromFile\": \"" + m_openVSlamYaml + "\",";
+                }
+                out_json << ln << std::endl;
+            }
+            in_json.close();
+            out_json.close();
+        } catch (std::exception & e) {
+            RCLCPP_ERROR(
+                get_logger(), "Error while processing %s -> to %s: %s",
+                m_configFile.c_str(), m_lpSlamJson.c_str(), e.what());
+            return false;
+        }
+        RCLCPP_INFO(get_logger(), "%s LP-SLAM config has been prepared", m_lpSlamJson.c_str());
+        return true;
+    }
+
     // Callbacks
     void image_callback_right(const sensor_msgs::msg::Image::SharedPtr msg)
     {
@@ -405,6 +571,31 @@ private:
                         m_rightImageBuffer.size());
             m_rightImageTimestamp = msg->header.stamp;
         }
+    }
+
+    void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
+    {
+        if (camera_configured_)
+        {
+            return;
+        }
+
+        // Make OpenVSLAM config-file
+        if (!make_openvslam_config(msg))
+        {
+            return;
+        }
+        // Update LP-SLAM config file with prepared OpenVSLAM one
+        if (!make_lpslam_config())
+        {
+            return;
+        }
+
+        // All configurations were prepared. Starting SLAM.
+        start_slam();
+
+        // Once camera was configured, no more actions needed here
+        camera_configured_ = true;
     }
 
     void image_callback_left(const sensor_msgs::msg::Image::SharedPtr msg)
@@ -751,6 +942,7 @@ public:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_laserScanSubsription;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_leftImageSubscription;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_rightImageSubscription;
+    rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscription;
 
     // TF2 handlers
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
@@ -787,6 +979,7 @@ public:
     bool m_use_odometry;
     bool m_writeLpSlamLog;
     bool m_isStereoCamera;
+    double m_cameraFps;
     bool m_consumeLaser;
     double m_timespanMatch;
     // means that both stereo images are in one physical image
@@ -796,6 +989,25 @@ public:
 
     // the godly SlamManager
     LpSlamManager m_slam;
+
+    std::string m_vSlamMethod;
+
+    // OpenVSLAM parameters
+    int m_openVSlam_maxNumKeypoints;
+    int m_openVSlam_iniMaxNumKeypoints;
+    double m_openVSlam_scaleFactor;
+    int m_openVSlam_numLevels;
+    int m_openVSlam_iniFastThreshold;
+    int m_openVSlam_minFastThreshold;
+    double m_openVSlam_depthThreshold;
+    double m_openVSlam_depthmapFactor;
+    double m_openVSlam_mappingBaselineDistThr;
+    double m_openVSlam_pangolinViewerFps;
+
+    std::string m_openVSlamYaml;
+    std::string m_lpSlamJson;
+    // whether the camera config was read
+    bool camera_configured_;
 };
 
 void outside_lpslam_OnReconstructionCallback(LpSlamGlobalStateInTime const &state_in_time, void *lpslam_node)
