@@ -100,25 +100,18 @@ public:
 
         // allow for relaxed QoS for laser scan in order to match
         // the topic settings
-        rclcpp::QoS laser_qos(5);
-        laser_qos.keep_last(5);
-        laser_qos.best_effort();
-        laser_qos.durability_volatile();
-
-        auto default_qos = rclcpp::QoS(rclcpp::SystemDefaultsQoS());
+        auto laser_qos = rclcpp::QoS(rclcpp::SensorDataQoS());
         
         if (m_consumeLaser) { 
             m_laserScanSubsription = this->create_subscription<sensor_msgs::msg::LaserScan>(
-                laserscan_topic, default_qos,
+                laserscan_topic, laser_qos,
                 std::bind(&LpSlamNode::laserscan_callback, this, std::placeholders::_1));
         }
 
         // allow for relaxed QoS for image in order to match
         // the topic settings
-        rclcpp::QoS video_qos(10);
+        auto video_qos = rclcpp::QoS(rclcpp::SensorDataQoS());
         video_qos.keep_last(10);
-        video_qos.best_effort();
-        video_qos.durability_volatile();
 
         m_leftImageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
             left_image_topic, video_qos,
