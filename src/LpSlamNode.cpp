@@ -8,6 +8,7 @@
 
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
@@ -34,6 +35,7 @@
 #include <mutex>
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 #include <yaml-cpp/yaml.h>
 
@@ -125,7 +127,8 @@ public:
 
         m_openVSlamYaml = "";
         m_lpSlamJson = m_configFile;
-        camera_configured_ = false;
+        m_cameraConfigured = false;
+        m_cameraEncoding = "";
 
         m_use_odometry = this->declare_parameter<bool>("use_odometry", true);
 
@@ -167,7 +170,7 @@ public:
                 std::bind(&LpSlamNode::image_callback_right, this, std::placeholders::_1));
         }
 
-        if (camera_info_topic.length() > 0)
+        if (!camera_info_topic.empty())
         {
             m_cameraInfoSubscription = this->create_subscription<sensor_msgs::msg::CameraInfo>(
                 camera_info_topic, video_qos,
@@ -186,7 +189,7 @@ public:
 
         m_tfBroadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-        if (camera_info_topic.length() == 0) {
+        if (camera_info_topic.empty()) {
             // Camera calibration files won't be read from topic.
             // Starting SLAM manually.
             start_slam();
@@ -442,6 +445,45 @@ private:
         return true;
     }
 
+    bool get_camera_color_order(YAML::Node & configNode)
+    {
+        const int max_try = 10;
+        for (int c = 0; c < max_try; c++) {
+            {
+                std::lock_guard<std::mutex> lock(m_cameraEncodingMutex);
+                if (!m_cameraEncoding.empty()) {
+                    if (m_cameraEncoding == sensor_msgs::image_encodings::RGB8) {
+                        configNode["Camera"]["color_order"] = "RGB";
+                        return true;
+                    } else if (m_cameraEncoding == sensor_msgs::image_encodings::RGBA8) {
+                        configNode["Camera"]["color_order"] = "RGBA";
+                        return true;
+                    } else if (m_cameraEncoding == sensor_msgs::image_encodings::BGR8) {
+                        configNode["Camera"]["color_order"] = "BGR";
+                        return true;
+                    } else if (m_cameraEncoding == sensor_msgs::image_encodings::BGRA8) {
+                        configNode["Camera"]["color_order"] = "BGRA";
+                        return true;
+                    } else if (m_cameraEncoding == sensor_msgs::image_encodings::MONO8) {
+                        configNode["Camera"]["color_order"] = "Gray";
+                        return true;
+                    } else {
+                        RCLCPP_ERROR(
+                            get_logger(),
+                            "%s camera encoding is not supported by OpenVSLAM",
+                            m_cameraEncoding.c_str());
+                        return false;
+                    }
+                }
+            }
+            // Wait for some time
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+
+        RCLCPP_ERROR(get_logger(), "Can not obtain camera encoding");
+        return false;
+    }
+
     bool make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
     {
         // Form OpenVSLAM config YAML
@@ -483,6 +525,11 @@ private:
         configNode["Camera"]["fps"] = m_cameraFps;
         configNode["Camera"]["cols"] = msg->width;
         configNode["Camera"]["rows"] = msg->height;
+
+        // Trying to get Camera.color_order
+        if (!get_camera_color_order(configNode)) {
+            return false;
+        }
 
         configNode["Feature"]["max_num_keypoints"] = m_openVSlam_maxNumKeypoints;
         configNode["Feature"]["ini_max_num_keypoints"] = m_openVSlam_iniMaxNumKeypoints;
@@ -575,7 +622,7 @@ private:
 
     void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
     {
-        if (camera_configured_)
+        if (m_cameraConfigured)
         {
             return;
         }
@@ -595,11 +642,16 @@ private:
         start_slam();
 
         // Once camera was configured, no more actions needed here
-        camera_configured_ = true;
+        m_cameraConfigured = true;
     }
 
     void image_callback_left(const sensor_msgs::msg::Image::SharedPtr msg)
     {
+        std::lock_guard<std::mutex> lock(m_cameraEncodingMutex);
+        if (m_cameraEncoding.empty()) {
+            m_cameraEncoding = msg->encoding;
+        }
+
         if (check_and_dispatch(msg, m_rightImageBuffer, m_rightImageTimestamp, m_rightImageMutex, true))
         {
             return;
@@ -1007,7 +1059,10 @@ public:
     std::string m_openVSlamYaml;
     std::string m_lpSlamJson;
     // whether the camera config was read
-    bool camera_configured_;
+    bool m_cameraConfigured;
+    // including camera color encoding
+    std::string m_cameraEncoding;
+    std::mutex m_cameraEncodingMutex;
 };
 
 void outside_lpslam_OnReconstructionCallback(LpSlamGlobalStateInTime const &state_in_time, void *lpslam_node)
