@@ -85,6 +85,8 @@ public:
 
         auto useSimTime = this->get_parameter( "use_sim_time" ).as_bool();
         RCLCPP_INFO(get_logger(), "LpSlamNode is using sim time: %s", useSimTime ? "yes": "no");
+        const std::string qos_reliability = this->declare_parameter<std::string>(
+            "qos_reliability", "best_effort");
 
         const std::string left_image_topic = this->declare_parameter<std::string>(
             "left_image_topic", "left_image_raw");
@@ -141,7 +143,12 @@ public:
         // the topic settings
         rclcpp::QoS laser_qos(5);
         laser_qos.keep_last(5);
-        laser_qos.best_effort();
+        if (qos_reliability == "best_effort") {
+            laser_qos.best_effort();
+        } else {
+            // reliable
+            laser_qos.reliable();
+        }
         laser_qos.durability_volatile();
 
         auto default_qos = rclcpp::QoS(rclcpp::SystemDefaultsQoS());
@@ -156,7 +163,12 @@ public:
         // the topic settings
         rclcpp::QoS video_qos(10);
         video_qos.keep_last(10);
-        video_qos.best_effort();
+        if (qos_reliability == "best_effort") {
+            video_qos.best_effort();
+        } else {
+            // reliable
+            video_qos.reliable();
+        }
         video_qos.durability_volatile();
 
         m_leftImageSubscription = this->create_subscription<sensor_msgs::msg::Image>(
