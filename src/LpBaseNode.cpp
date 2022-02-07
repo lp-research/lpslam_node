@@ -125,7 +125,7 @@ void LpBaseNode::lpslam_OnReconstructionCallback(LpSlamGlobalStateInTime const &
     if (!state.valid)  {
         RCLCPP_DEBUG(get_logger(), "SLAM Tracking state invalid, wont use it.");
 
-           // send out the last transform we know
+        // send out the last transform we know
         if (m_lastTransform.has_value())  {
             auto msg = m_lastTransform.value();
             msg.header.stamp = this->now() + m_transform_tolerance;

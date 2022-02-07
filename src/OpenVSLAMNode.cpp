@@ -432,14 +432,14 @@ void OpenVSLAMNode::image_callback_stereo(
         // Last camera state in map frame is valid
         cam_pose_map.valid = true;
         cam_pose_map.cam_translation = openvslam::Vec3_t(
-            last_odom_pose.state.position.y,
-            -last_odom_pose.state.position.x,
-            last_odom_pose.state.position.z);
+            last_map_pose.state.position.y,
+            -last_map_pose.state.position.x,
+            last_map_pose.state.position.z);
         const Eigen::Quaternion<double> cam_rot_q = Eigen::Quaternion<double>(
-            last_odom_pose.state.orientation.w,
-            last_odom_pose.state.orientation.y,
-            -last_odom_pose.state.orientation.x,
-            last_odom_pose.state.orientation.z);
+            last_map_pose.state.orientation.w,
+            last_map_pose.state.orientation.y,
+            -last_map_pose.state.orientation.x,
+            last_map_pose.state.orientation.z);
         cam_pose_map.cam_rotation = cam_rot_q.normalized().toRotationMatrix();
     } else {
         // Last camera state in map frame is invalid
@@ -466,15 +466,40 @@ void OpenVSLAMNode::image_callback_stereo(
         }
 
         // Track image
-        Eigen::Matrix4d cam_pose_cw = m_openVSlam->feed_stereo_frame(
+        m_openVSlam->feed_stereo_frame(
             leftcv, rightcv, img_timestamp, cv::Mat{},
             cam_pose_odom, cam_pose_map, m_laser2D);
 
+        // Get camera pose after VSLAM
+        const Eigen::Matrix4d cam_pose_cw = m_openVSlam->get_map_publisher()->get_current_cam_pose();
+
         // Get tracking state
+        LpSlamGlobalStateInTime res;
         const openvslam::publish::frame_state frame_state = m_openVSlam->get_frame_state();
-        if (frame_state.tracker_state !=
+        if (frame_state.tracker_state ==
             openvslam::tracker_state_t::Tracking)
         {
+            // Fill the state
+            //cam_center = -rot_cw.transpose() * trans_cw;
+            Eigen::Matrix3d rot_cw = cam_pose_cw.block<3, 3>(0, 0);
+            Eigen::Quaterniond q_rot_cw(rot_cw);
+            Eigen::Vector3d trans_cw = cam_pose_cw.block<3, 1>(0, 3);
+            Eigen::Vector3d cam_center = -rot_cw.transpose() * trans_cw;
+            // Convert pose from optical to LP coordinate system
+            res.state.position.x = -cam_center.y();
+            res.state.position.y = cam_center.x();
+            res.state.position.z = cam_center.z();
+            res.state.orientation.w = q_rot_cw.w();
+            res.state.orientation.x = -q_rot_cw.y();
+            res.state.orientation.y = q_rot_cw.x();
+            res.state.orientation.z = q_rot_cw.z();
+            res.state.valid = true;
+
+            // Fill the time
+            res.ros_timestamp.seconds = left->header.stamp.sec;
+            res.ros_timestamp.nanoseconds = left->header.stamp.nanosec;
+            res.has_ros_timestamp = true;
+        } else {
             std::string state_string;
             switch (frame_state.tracker_state) {
                 case openvslam::tracker_state_t::NotInitialized:
@@ -487,37 +512,18 @@ void OpenVSLAMNode::image_callback_stereo(
                     state_string = "Track Lost";
                     break;
                 default:
-                    state_string = "Unknown State";
+                    state_string = "Unknown";
                     break;
             }
             RCLCPP_WARN(
                 get_logger(),
-                "OpenVSLAM tracker is in \"%s\" state. Pose is not being published.",
+                "OpenVSLAM tracker is in \"%s\" state",
                 state_string.c_str());
-            return;
+
+            // Send invalid reconstructon in order to keep TF being updated
+            // (to latest valid map->odom state)
+            res.state.valid = false;
         }
-
-        LpSlamGlobalStateInTime res;
-        // Fill the state
-        //cam_center = -rot_cw.transpose() * trans_cw;
-        Eigen::Matrix3d rot_cw = cam_pose_cw.block<3, 3>(0, 0);
-        Eigen::Quaterniond q_rot_cw(rot_cw);
-        Eigen::Vector3d trans_cw = cam_pose_cw.block<3, 1>(0, 3);
-        Eigen::Vector3d cam_center = -rot_cw.transpose() * trans_cw;
-        // Convert pose from optical to LP coordinate system
-        res.state.position.x = -cam_center.y();
-        res.state.position.y = cam_center.x();
-        res.state.position.z = cam_center.z();
-        res.state.orientation.w = q_rot_cw.w();
-        res.state.orientation.x = -q_rot_cw.y();
-        res.state.orientation.y = q_rot_cw.x();
-        res.state.orientation.z = q_rot_cw.z();
-        res.state.valid = true;
-
-        // Fill the time
-        res.ros_timestamp.seconds = left->header.stamp.sec;
-        res.ros_timestamp.nanoseconds = left->header.stamp.nanosec;
-        res.has_ros_timestamp = true;
 
         // Publish map->odom transform
         lpslam_OnReconstructionCallback(res);
