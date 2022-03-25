@@ -36,6 +36,7 @@ if (USE_OPENVSLAM_DIRECTLY)
 else()
   find_package(lpslam_interfaces REQUIRED)
 endif()
+find_package(rclcpp_components REQUIRED)
 
 SET(LPSLAM_BUILD_ROS2 ON CACHE BOOL "build with ROS2 support")
 SET(LPSLAM_BUILD_LPSLAM ON CACHE BOOL "Build LPSLAM module")
@@ -59,46 +60,47 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-## Build
-SET(LPSPAM_NODE_SRC src/LpBaseNode.cpp)
-if(USE_OPENVSLAM_DIRECTLY)
-  LIST(APPEND LPSPAM_NODE_SRC src/OpenVSLAMNode.cpp)
-else()
-  LIST(APPEND LPSPAM_NODE_SRC src/LpSlamNode.cpp)
-endif()
-LIST(APPEND LPSPAM_NODE_SRC src/main.cpp)
+set(node_plugins "")
 
-add_executable(lpslam_node
-  ${LPSPAM_NODE_SRC}
+## Build
+SET(LPSLAM_NODE_SRC src/LpBaseNode.cpp)
+if(USE_OPENVSLAM_DIRECTLY)
+  LIST(APPEND LPSLAM_NODE_SRC src/OpenVSLAMNode.cpp)
+else()
+  LIST(APPEND LPSLAM_NODE_SRC src/LpSlamNode.cpp)
+endif()
+
+add_library(lpslam_component SHARED
+  ${LPSLAM_NODE_SRC}
 )
 
-SET(LPSPAM_NODE_LIBS
+SET(LPSLAM_NODE_LIBS
   ${OPENZEN_TARGET_NAME}
 )
 
 if(USE_OPENVSLAM_DIRECTLY)
-  LIST(APPEND LPSPAM_NODE_LIBS openvslam)
-  target_include_directories(lpslam_node
+  LIST(APPEND LPSLAM_NODE_LIBS openvslam)
+  target_include_directories(lpslam_component
     PRIVATE
     lpslam/src/Interface)
 
   if(USE_PANGOLIN_VIEWER)
-    LIST(APPEND LPSPAM_NODE_LIBS pangolin_viewer)
+    LIST(APPEND LPSLAM_NODE_LIBS pangolin_viewer)
     if (NOT LPSLAM_BUILD_LPSLAM)
       # If build lpslam with conan, it will add pangolin dependency.
       # Otherwise, adding it manually
-      LIST(APPEND LPSPAM_NODE_LIBS pangolin)
+      LIST(APPEND LPSLAM_NODE_LIBS pangolin)
     endif()
   endif()
 else()
-  LIST(APPEND LPSPAM_NODE_LIBS lpslam)
+  LIST(APPEND LPSLAM_NODE_LIBS lpslam)
 endif()
 
-target_link_libraries(lpslam_node
-  ${LPSPAM_NODE_LIBS}
+target_link_libraries(lpslam_component
+  ${LPSLAM_NODE_LIBS}
 )
 
-SET(LPSPAM_NODE_DEPS
+SET(LPSLAM_NODE_DEPS
   rclcpp
   std_msgs
   sensor_msgs
@@ -107,13 +109,43 @@ SET(LPSPAM_NODE_DEPS
   tf2_ros
   tf2_geometry_msgs
   yaml_cpp_vendor
+  rclcpp_components
 )
 
 if(USE_OPENVSLAM_DIRECTLY)
-  LIST(APPEND LPSPAM_NODE_DEPS message_filters builtin_interfaces cv_bridge)
-  target_compile_definitions(lpslam_node PRIVATE -DUSE_OPENVSLAM_DIRECTLY)
+  LIST(APPEND LPSLAM_NODE_DEPS message_filters builtin_interfaces cv_bridge)
+  target_compile_definitions(lpslam_component PRIVATE -DUSE_OPENVSLAM_DIRECTLY)
 else()
-  LIST(APPEND LPSPAM_NODE_DEPS lpslam_interfaces)
+  LIST(APPEND LPSLAM_NODE_DEPS lpslam_interfaces)
+endif()
+
+if(USE_PANGOLIN_VIEWER)
+  target_compile_definitions(lpslam_component PRIVATE -DUSE_PANGOLIN_VIEWER)
+endif()
+
+ament_target_dependencies(lpslam_component
+  ${LPSLAM_NODE_DEPS})
+
+if(USE_OPENVSLAM_DIRECTLY)
+  rclcpp_components_register_nodes(lpslam_component "lpslam_components::OpenVSLAMNode")
+  set(node_plugins "${node_plugins}lpslam_components::OpenVSLAMNode;$<TARGET_FILE:lpslam_component>\n")
+else()
+  rclcpp_components_register_nodes(lpslam_component "lpslam_components::LpSlamNode")
+  set(node_plugins "${node_plugins}lpslam_components::LpSlamNode;$<TARGET_FILE:lpslam_component>\n")
+endif()
+
+
+add_executable(lpslam_node
+  src/main.cpp)
+target_include_directories(lpslam_node
+  PRIVATE
+  lpslam/src/Interface)
+
+target_link_libraries(lpslam_node
+  ${LPSLAM_NODE_LIBS}
+  lpslam_component)
+if(USE_OPENVSLAM_DIRECTLY)
+  target_compile_definitions(lpslam_node PRIVATE -DUSE_OPENVSLAM_DIRECTLY)
 endif()
 
 if(USE_PANGOLIN_VIEWER)
@@ -121,10 +153,18 @@ if(USE_PANGOLIN_VIEWER)
 endif()
 
 ament_target_dependencies(lpslam_node
-  ${LPSPAM_NODE_DEPS})
-
-install(TARGETS lpslam_node
+  ${LPSLAM_NODE_DEPS})
+  
+install( TARGETS
+  lpslam_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)  
+install(TARGETS
+  lpslam_node
   DESTINATION lib/${PROJECT_NAME})
+
 if (LPSLAM_BUILD_LPSLAM)
   install(TARGETS lpslam
     DESTINATION lib/${PROJECT_NAME})

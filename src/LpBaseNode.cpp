@@ -19,7 +19,9 @@ nice explainer:
 https://www.stereolabs.com/docs/ros2/video/
 */
 
-LpBaseNode::LpBaseNode() : Node("lpslam_node")
+namespace lpslam_components
+{
+    LpBaseNode::LpBaseNode(const rclcpp::NodeOptions & options) : Node("lpslam_node", options)
 {
     if (!setParameters()) {
         return;
@@ -495,3 +497,7 @@ LpSlamROSTimestamp LpBaseNode::rosTimeToLpSlam( rclcpp::Time const& ts ) const
 {
     return LpSlamROSTimestamp{0, ts.nanoseconds()};
 }
+
+    
+} // namespace lpslam_components
+

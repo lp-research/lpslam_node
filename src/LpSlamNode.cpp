@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "LpSlamNode.hpp"
+namespace lpslam_components
+{
 
 void outside_lpslam_OnReconstructionCallback(LpSlamGlobalStateInTime const &state_in_time, void *lpslam_node)
 {
@@ -37,7 +39,7 @@ LpSlamRequestNavTransformation outside_lpslam_RequestNavTransformationCallback(L
         from_frame, to_frame);
 }
 
-LpSlamNode::LpSlamNode() : LpBaseNode()
+   LpSlamNode::LpSlamNode(const rclcpp::NodeOptions & options) : LpBaseNode(options)
 {
     RCLCPP_INFO(get_logger(), "starting LpSlam node");
 
@@ -550,3 +552,9 @@ void LpSlamNode::stopSlam()
 {
     m_slam.stop();
 }
+ 
+} // namespace lpslam_components
+
+#include "rclcpp_components/register_node_macro.hpp"
+
+RCLCPP_COMPONENTS_REGISTER_NODE(lpslam_components::LpSlamNode)

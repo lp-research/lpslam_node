@@ -12,35 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 #ifndef USE_OPENVSLAM_DIRECTLY
 #include "LpSlamNode.hpp"
-#define VSLAM LpSlamNode
+#define VSLAM lpslam_components::LpSlamNode
 #else
 #include "OpenVSLAMNode.hpp"
-#define VSLAM OpenVSLAMNode
+#define VSLAM lpslam_components::OpenVSLAMNode
 #endif  // USE_OPENVSLAM_DIRECTLY
 
-// Signal handler for no-destructor issue:
-// https://answers.ros.org/question/364045/publish-message-on-destructor-works-only-on-rclpy
-// https://stackoverflow.com/questions/58644994/destructor-of-shared-ptr-object-never-called
-// https://github.com/ros2/rclcpp/issues/317
-std::shared_ptr<VSLAM> node_;
-void signal_handler(int /*sig_num*/)
-{
-    node_->stopSlam();
-    rclcpp::shutdown();
-}
 
 int main(int argc, char **argv)
 {
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-    signal(SIGKILL, signal_handler);
+    // Force flush of the stdout buffer.
+    setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
     rclcpp::init(argc, argv);
 
-    node_ = std::make_shared<VSLAM>();
-    rclcpp::spin(node_);
+
+    rclcpp::executors::SingleThreadedExecutor exec;
+    rclcpp::NodeOptions options;
+
+
+    auto node_ = std::make_shared<VSLAM>(options);
+
+    exec.add_node(node_);
+    exec.spin();
+
     rclcpp::shutdown();
 
     return 0;
