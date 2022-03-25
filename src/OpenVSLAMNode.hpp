@@ -49,10 +49,12 @@ struct FeaturePosition {
   float z;
 };
 
-class OpenVSLAMNode : public LpBaseNode
+namespace lpslam_components
+{
+   class OpenVSLAMNode : public LpBaseNode
 {
 public:
-    OpenVSLAMNode();
+    OpenVSLAMNode(const rclcpp::NodeOptions & options);
     ~OpenVSLAMNode();
 
 private:
@@ -123,3 +125,5 @@ private:
 };
 
 #endif  // OPENVSLAM_NODE_HPP_
+ 
+} // namespace lpslam_components

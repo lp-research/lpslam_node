@@ -32,10 +32,12 @@ LpSlamRequestNavTransformation outside_lpslam_RequestNavTransformationCallback(L
     LpSlamNavDataFrame to_frame,
     void * lpslam_node);
 
-class LpSlamNode : public LpBaseNode
+namespace lpslam_components
+{
+    class LpSlamNode : public LpBaseNode
 {
 public:
-    LpSlamNode();
+    LpSlamNode(const rclcpp::NodeOptions & options);
     ~LpSlamNode();
 
 private:
@@ -109,3 +111,6 @@ private:
 };
 
 #endif  // LP_SLAM_NODE_HPP_
+
+    
+} // namespace lpslam_components

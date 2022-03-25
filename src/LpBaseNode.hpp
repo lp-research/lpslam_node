@@ -30,7 +30,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/map_meta_data.hpp>
 
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <cstring>
 #include <memory>
@@ -58,10 +58,12 @@ nice explainer:
 https://www.stereolabs.com/docs/ros2/video/
 */
 
-class LpBaseNode : public rclcpp::Node
+namespace lpslam_components
+{
+    class LpBaseNode : public rclcpp::Node
 {
 public:
-    LpBaseNode();
+    explicit LpBaseNode(const rclcpp::NodeOptions & options);
 
 private:
     bool setParameters();
@@ -184,3 +186,6 @@ protected:
 };
 
 #endif  // LP_BASE_NODE_HPP_
+   
+} // namespace lpslam_components
+

@@ -14,7 +14,9 @@
 
 #include "OpenVSLAMNode.hpp"
 
-OpenVSLAMNode::OpenVSLAMNode() : LpBaseNode()
+namespace lpslam_components
+{
+    OpenVSLAMNode::OpenVSLAMNode(const rclcpp::NodeOptions & options) : LpBaseNode(options)
 {
     RCLCPP_INFO(get_logger(), "starting OpenVSlam node");
 
@@ -627,3 +629,10 @@ void OpenVSLAMNode::stopSlam()
     m_openVSlam->shutdown();
     m_openVSlam.reset(nullptr);
 }
+
+    
+} // namespace lpslam
+
+#include "rclcpp_components/register_node_macro.hpp"
+
+RCLCPP_COMPONENTS_REGISTER_NODE(lpslam_components::OpenVSLAMNode)
