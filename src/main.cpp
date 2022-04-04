@@ -34,9 +34,9 @@ int main(int argc, char **argv)
     rclcpp::NodeOptions options;
 
 
-    auto node_ = std::make_shared<VSLAM>(options);
+    auto node = std::make_shared<VSLAM>(options);
 
-    exec.add_node(node_);
+    exec.add_node(node);
     exec.spin();
 
     rclcpp::shutdown();

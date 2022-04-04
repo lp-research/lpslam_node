@@ -60,7 +60,7 @@ https://www.stereolabs.com/docs/ros2/video/
 
 namespace lpslam_components
 {
-    class LpBaseNode : public rclcpp::Node
+class LpBaseNode : public rclcpp::Node
 {
 public:
     explicit LpBaseNode(const rclcpp::NodeOptions & options);

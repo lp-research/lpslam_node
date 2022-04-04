@@ -60,18 +60,16 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-set(node_plugins "")
-
 ## Build
-SET(LPSLAM_NODE_SRC src/LpBaseNode.cpp)
+SET(LPSLAM_COMPONENTS_SRC src/LpBaseNode.cpp)
 if(USE_OPENVSLAM_DIRECTLY)
-  LIST(APPEND LPSLAM_NODE_SRC src/OpenVSLAMNode.cpp)
+  LIST(APPEND LPSLAM_COMPONENTS_SRC src/OpenVSLAMNode.cpp)
 else()
-  LIST(APPEND LPSLAM_NODE_SRC src/LpSlamNode.cpp)
+  LIST(APPEND LPSLAM_COMPONENTS_SRC src/LpSlamNode.cpp)
 endif()
 
-add_library(lpslam_component SHARED
-  ${LPSLAM_NODE_SRC}
+add_library(lpslam_components SHARED
+  ${LPSLAM_COMPONENTS_SRC}
 )
 
 SET(LPSLAM_NODE_LIBS
@@ -80,7 +78,7 @@ SET(LPSLAM_NODE_LIBS
 
 if(USE_OPENVSLAM_DIRECTLY)
   LIST(APPEND LPSLAM_NODE_LIBS openvslam)
-  target_include_directories(lpslam_component
+  target_include_directories(lpslam_components
     PRIVATE
     lpslam/src/Interface)
 
@@ -96,7 +94,7 @@ else()
   LIST(APPEND LPSLAM_NODE_LIBS lpslam)
 endif()
 
-target_link_libraries(lpslam_component
+target_link_libraries(lpslam_components
   ${LPSLAM_NODE_LIBS}
 )
 
@@ -114,37 +112,36 @@ SET(LPSLAM_NODE_DEPS
 
 if(USE_OPENVSLAM_DIRECTLY)
   LIST(APPEND LPSLAM_NODE_DEPS message_filters builtin_interfaces cv_bridge)
-  target_compile_definitions(lpslam_component PRIVATE -DUSE_OPENVSLAM_DIRECTLY)
+  target_compile_definitions(lpslam_components PRIVATE -DUSE_OPENVSLAM_DIRECTLY)
 else()
   LIST(APPEND LPSLAM_NODE_DEPS lpslam_interfaces)
 endif()
 
 if(USE_PANGOLIN_VIEWER)
-  target_compile_definitions(lpslam_component PRIVATE -DUSE_PANGOLIN_VIEWER)
+  target_compile_definitions(lpslam_components PRIVATE -DUSE_PANGOLIN_VIEWER)
 endif()
 
-ament_target_dependencies(lpslam_component
+ament_target_dependencies(lpslam_components
   ${LPSLAM_NODE_DEPS})
 
 if(USE_OPENVSLAM_DIRECTLY)
-  rclcpp_components_register_nodes(lpslam_component "lpslam_components::OpenVSLAMNode")
-  set(node_plugins "${node_plugins}lpslam_components::OpenVSLAMNode;$<TARGET_FILE:lpslam_component>\n")
+  rclcpp_components_register_nodes(lpslam_components "lpslam_components::OpenVSLAMNode")
 else()
-  rclcpp_components_register_nodes(lpslam_component "lpslam_components::LpSlamNode")
-  set(node_plugins "${node_plugins}lpslam_components::LpSlamNode;$<TARGET_FILE:lpslam_component>\n")
+  rclcpp_components_register_nodes(lpslam_components "lpslam_components::LpSlamNode")
 endif()
 
 
 add_executable(lpslam_node
   src/main.cpp)
-target_include_directories(lpslam_node
-  PRIVATE
-  lpslam/src/Interface)
+
 
 target_link_libraries(lpslam_node
   ${LPSLAM_NODE_LIBS}
-  lpslam_component)
+  lpslam_components)
 if(USE_OPENVSLAM_DIRECTLY)
+  target_include_directories(lpslam_node
+    PRIVATE
+    lpslam/src/Interface)
   target_compile_definitions(lpslam_node PRIVATE -DUSE_OPENVSLAM_DIRECTLY)
 endif()
 
@@ -154,9 +151,8 @@ endif()
 
 ament_target_dependencies(lpslam_node
   ${LPSLAM_NODE_DEPS})
-  
-install( TARGETS
-  lpslam_component
+install(TARGETS
+  lpslam_components
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin

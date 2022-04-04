@@ -16,7 +16,7 @@
 
 namespace lpslam_components
 {
-    OpenVSLAMNode::OpenVSLAMNode(const rclcpp::NodeOptions & options) : LpBaseNode(options)
+OpenVSLAMNode::OpenVSLAMNode(const rclcpp::NodeOptions & options) : LpBaseNode(options)
 {
     RCLCPP_INFO(get_logger(), "starting OpenVSlam node");
 

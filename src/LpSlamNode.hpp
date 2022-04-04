@@ -34,7 +34,7 @@ LpSlamRequestNavTransformation outside_lpslam_RequestNavTransformationCallback(L
 
 namespace lpslam_components
 {
-    class LpSlamNode : public LpBaseNode
+class LpSlamNode : public LpBaseNode
 {
 public:
     LpSlamNode(const rclcpp::NodeOptions & options);
@@ -67,10 +67,8 @@ private:
     // Config makers
     bool make_lpslam_config();
 
-public:
     void stopSlam();
 
-private:
     // publishers
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> m_pointcloudPublisher;
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>> m_occGridPublisher;
