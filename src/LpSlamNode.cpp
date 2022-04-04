@@ -39,7 +39,7 @@ LpSlamRequestNavTransformation outside_lpslam_RequestNavTransformationCallback(L
         from_frame, to_frame);
 }
 
-   LpSlamNode::LpSlamNode(const rclcpp::NodeOptions & options) : LpBaseNode(options)
+LpSlamNode::LpSlamNode(const rclcpp::NodeOptions & options) : LpBaseNode(options)
 {
     RCLCPP_INFO(get_logger(), "starting LpSlam node");
 

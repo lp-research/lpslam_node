@@ -51,7 +51,7 @@ struct FeaturePosition {
 
 namespace lpslam_components
 {
-   class OpenVSLAMNode : public LpBaseNode
+class OpenVSLAMNode : public LpBaseNode
 {
 public:
     OpenVSLAMNode(const rclcpp::NodeOptions & options);
@@ -80,10 +80,8 @@ private:
     void laserscan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
     void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
 
-public:
     void stopSlam();
 
-private:
     // publishers
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> m_pointcloudPublisher;
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>> m_occGridPublisher;

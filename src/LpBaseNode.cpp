@@ -21,7 +21,7 @@ https://www.stereolabs.com/docs/ros2/video/
 
 namespace lpslam_components
 {
-    LpBaseNode::LpBaseNode(const rclcpp::NodeOptions & options) : Node("lpslam_node", options)
+LpBaseNode::LpBaseNode(const rclcpp::NodeOptions & options) : Node("lpslam_node", options)
 {
     if (!setParameters()) {
         return;
