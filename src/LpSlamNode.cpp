@@ -57,6 +57,11 @@ LpSlamNode::LpSlamNode(const rclcpp::NodeOptions & options) : LpBaseNode(options
     }
 
     setTimers();
+
+    if (!setCameraPlacement()) {
+        RCLCPP_INFO(get_logger(), "No camera transform available, assuming it's mounted at z = 0.0 for now");
+        m_cameraZ = 0.0;
+    }
 }
 
 LpSlamNode::~LpSlamNode()
@@ -248,8 +253,12 @@ void LpSlamNode::publishOccMap()
         occGridMessage.info.origin.position.y);
 
     //  account for higher placement of camera
-    occGridMessage.info.origin.position.z = -1.15;
-
+    if(m_cameraZ == 0.0){
+        // try to set camera placement again
+        setCameraPlacement();
+        RCLCPP_INFO(get_logger(), "Camera z = %f", m_cameraZ);
+    }
+    occGridMessage.info.origin.position.z = m_cameraZ;
     occGridMessage.header.frame_id = m_map_frame_id;
     occGridMessage.header.stamp = this->now();
 
