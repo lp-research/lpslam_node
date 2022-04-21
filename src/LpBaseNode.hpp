@@ -89,6 +89,8 @@ protected:
     bool make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
     bool get_camera_color_order(YAML::Node & configNode);
 
+    bool setCameraPlacement();
+
     // ROS<->LP converters
     LpSlamGlobalStateInTime transformToLpSlamGlobalState(geometry_msgs::msg::TransformStamped const& tf) const;
     rclcpp::Time lpSlamToRosTime( LpSlamROSTimestamp const& ts ) const;
@@ -147,6 +149,8 @@ protected:
     std::string m_openVSlamYaml;
     // whether the camera config was read
     bool m_cameraConfigured;
+    // Camera z placement
+    double m_cameraZ;
 
 private:
     // Indicator that SLAM has been started and one can use its outputs

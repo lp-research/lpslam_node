@@ -456,6 +456,25 @@ bool LpBaseNode::get_camera_color_order(YAML::Node & configNode)
     return false;
 }
 
+// Set camera placement relative to base_link
+bool LpBaseNode::setCameraPlacement()
+{
+    const auto transformTimeout = rclcpp::Duration::from_nanoseconds(0.1 * std::pow(10.0, 9.0));
+    geometry_msgs::msg::TransformStamped transform;
+    rclcpp::Time now = this->get_clock()->now();
+    try {
+        transform = m_tfBuffer->lookupTransform(m_camera_frame_id, m_base_frame_id, now, transformTimeout);
+        m_cameraZ = transform.transform.translation.z;
+        return true;
+
+    } catch (tf2::TransformException & ex) {
+        RCLCPP_INFO(
+        this->get_logger(), "Could not transform %s to %s: %s",
+        m_camera_frame_id.c_str(), m_base_frame_id.c_str(), ex.what());
+        return false;
+    }
+}
+
 LpSlamGlobalStateInTime LpBaseNode::transformToLpSlamGlobalState(geometry_msgs::msg::TransformStamped const& tf) const
 {
     LpSlamGlobalStateInTime ros_state;

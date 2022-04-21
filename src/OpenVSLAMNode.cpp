@@ -34,6 +34,11 @@ OpenVSLAMNode::OpenVSLAMNode(const rclcpp::NodeOptions & options) : LpBaseNode(o
     }
 
     setTimers();
+
+    if (!setCameraPlacement()) {
+        RCLCPP_INFO(get_logger(), "No camera transform available, assuming it's mounted at z = 0.0 for now");
+        m_cameraZ = 0.0;
+    }
 }
 
 OpenVSLAMNode::~OpenVSLAMNode()
@@ -262,11 +267,17 @@ void OpenVSLAMNode::publishOccMap()
     occGridMessage.info.resolution = mapInfo.resolution;
     occGridMessage.info.origin.position.x = mapInfo.origin_x;
     occGridMessage.info.origin.position.y = mapInfo.origin_y;
-    occGridMessage.info.origin.position.z = 0.0;
 
     RCLCPP_DEBUG(get_logger(), "occupancy map origin (%f, %f)", occGridMessage.info.origin.position.x,
         occGridMessage.info.origin.position.y);
 
+    //  account for higher placement of camera
+    if(m_cameraZ == 0.0){
+        // try to set camera placement again
+        setCameraPlacement();
+        RCLCPP_INFO(get_logger(), "Camera z = %f", m_cameraZ);
+    }
+    occGridMessage.info.origin.position.z = m_cameraZ;
     occGridMessage.header.frame_id = m_map_frame_id;
     occGridMessage.header.stamp = this->now();
 
