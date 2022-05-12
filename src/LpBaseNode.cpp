@@ -60,8 +60,12 @@ bool LpBaseNode::setParameters()
         "left_image_topic", "left_image_raw");
     m_rightImageTopic = this->declare_parameter<std::string>(
         "right_image_topic", "right_image_raw");
-    m_cameraInfoTopic = this->declare_parameter<std::string>(
-        "camera_info_topic", "");
+    m_useRosCameraInfo = this->declare_parameter<bool>(
+        "use_ros_camera_info", false);
+    m_rightCameraInfoTopic = this->declare_parameter<std::string>(
+        "right_camera_info_topic", "right_camera_info" );
+    m_leftCameraInfoTopic = this->declare_parameter<std::string>(
+        "left_camera_info_topic", "left_camera_info");
     m_cameraFps = this->declare_parameter<double>("camera_fps", 5.0);
     m_pointcloudTopic = this->declare_parameter<std::string>("pointcloud_topic", "slam_features");
     m_pointcloudRate = this->declare_parameter<int>("pointcloud_rate", 10);
@@ -339,16 +343,16 @@ void LpBaseNode::computeAndPublishTransform(LpSlamGlobalStateInTime const & stat
     m_tfBroadcaster->sendTransform(msg);
 }
 
-bool LpBaseNode::make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
+bool LpBaseNode::make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr left_msg, const sensor_msgs::msg::CameraInfo::SharedPtr right_msg)
 {
     // Form OpenVSLAM config YAML
     YAML::Node configNode;
 
-    if (msg->distortion_model != "plumb_bob") {
+    if (left_msg->distortion_model != "plumb_bob") {
         RCLCPP_ERROR(
             get_logger(),
             "%s distortion model is not supported",
-            msg->distortion_model.c_str());
+            left_msg->distortion_model.c_str());
         return false;
     }
 
@@ -361,10 +365,10 @@ bool LpBaseNode::make_openvslam_config(const sensor_msgs::msg::CameraInfo::Share
     }
     configNode["Camera"]["model"] = "perspective";
 
-    configNode["Camera"]["fx"] = msg->k[0];  // k[0,0]
-    configNode["Camera"]["fy"] = msg->k[4];  // k[1,1]
-    configNode["Camera"]["cx"] = msg->k[2];  // k[0,2]
-    configNode["Camera"]["cy"] = msg->k[5];  // k[1,2]
+    configNode["Camera"]["fx"] = left_msg->k[0];  // k[0,0]
+    configNode["Camera"]["fy"] = left_msg->k[4];  // k[1,1]
+    configNode["Camera"]["cx"] = left_msg->k[2];  // k[0,2]
+    configNode["Camera"]["cy"] = left_msg->k[5];  // k[1,2]
 
     // For perspective model
     configNode["Camera"]["k1"] = 0.0;
@@ -374,18 +378,36 @@ bool LpBaseNode::make_openvslam_config(const sensor_msgs::msg::CameraInfo::Share
     configNode["Camera"]["p2"] = 0.0;
 
     if (m_isStereoCamera) {
-        configNode["Camera"]["focal_x_baseline"] = -msg->p[3];  // -p[0,3]
+        configNode["Camera"]["focal_x_baseline"] = -left_msg->p[3];  // -p[0,3]
     }
 
     configNode["Camera"]["fps"] = m_cameraFps;
-    configNode["Camera"]["cols"] = msg->width;
-    configNode["Camera"]["rows"] = msg->height;
+    configNode["Camera"]["cols"] = left_msg->width;
+    configNode["Camera"]["rows"] = left_msg->height;
 
     // Trying to get Camera.color_order
     if (!get_camera_color_order(configNode)) {
         return false;
     }
 
+    // Stereo rectification parameters
+    configNode["StereoRectifier"]["model"] = "perspective";
+    std::vector<double> Dl(std::begin(left_msg->d), std::end(left_msg->d));
+    std::vector<double> Rl(std::begin(left_msg->r), std::end(left_msg->r));
+    std::vector<double> Kl(std::begin(left_msg->k), std::end(left_msg->k));
+
+    configNode["StereoRectifier"]["K_left"] = Kl;
+    configNode["StereoRectifier"]["D_left"]= Dl;
+    configNode["StereoRectifier"]["R_left"] = Rl;
+
+    std::vector<double> Dr(std::begin(right_msg->d), std::end(right_msg->d));
+    std::vector<double> Rr(std::begin(right_msg->r), std::end(right_msg->r));
+    std::vector<double> Kr(std::begin(right_msg->k), std::end(right_msg->k));
+
+    configNode["StereoRectifier"]["K_right"] = Kr;
+    configNode["StereoRectifier"]["D_right"] = Dr;
+    configNode["StereoRectifier"]["R_right"] = Rr;
+    
     configNode["Feature"]["max_num_keypoints"] = m_openVSlam_maxNumKeypoints;
     configNode["Feature"]["ini_max_num_keypoints"] = m_openVSlam_iniMaxNumKeypoints;
     configNode["Feature"]["scale_factor"] = m_openVSlam_scaleFactor;

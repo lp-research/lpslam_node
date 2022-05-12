@@ -78,7 +78,7 @@ private:
         const sensor_msgs::msg::Image::SharedPtr left,
         const sensor_msgs::msg::Image::SharedPtr right);
     void laserscan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
-    void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
+    void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr left_msg, const sensor_msgs::msg::CameraInfo::SharedPtr right_msg);
 
     void stopSlam();
 
@@ -93,8 +93,10 @@ private:
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> m_rightImageSubscription;
     std::shared_ptr<message_filters::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image>>
             m_synchronizer;
-    rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscription;
-
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>> m_leftCameraInfoSubscription;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>> m_rightCameraInfoSubscription;
+    std::shared_ptr<message_filters::TimeSynchronizer<sensor_msgs::msg::CameraInfo, sensor_msgs::msg::CameraInfo>>
+            m_camInfoSynchronizer;
     // Timers
     std::shared_ptr<rclcpp::TimerBase> m_pointcloud_timer;
     std::shared_ptr<rclcpp::TimerBase> m_occmap_timer;
