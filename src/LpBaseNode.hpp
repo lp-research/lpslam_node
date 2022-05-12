@@ -86,7 +86,7 @@ private:
 
 protected:
     // Config makers
-    bool make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
+    bool make_openvslam_config(const sensor_msgs::msg::CameraInfo::SharedPtr right_msg, const sensor_msgs::msg::CameraInfo::SharedPtr left_msg);
     bool get_camera_color_order(YAML::Node & configNode);
 
     bool setCameraPlacement();
@@ -122,7 +122,9 @@ protected:
     std::string m_laserscanTopic;
     std::string m_leftImageTopic;
     std::string m_rightImageTopic;
-    std::string m_cameraInfoTopic;
+    bool m_useRosCameraInfo;
+    std::string m_rightCameraInfoTopic;
+    std::string m_leftCameraInfoTopic;
     double m_cameraFps;
     std::string m_pointcloudTopic;
     int m_pointcloudRate;

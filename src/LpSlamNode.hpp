@@ -16,6 +16,8 @@
 #define LP_SLAM_NODE_HPP_
 
 #include "LpBaseNode.hpp"
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/subscriber.h>
 
 #include <lpslam_interfaces/msg/lp_slam_status.hpp>
 #include "LpSlamManager.h"
@@ -62,7 +64,7 @@ private:
     void image_callback_right(const sensor_msgs::msg::Image::SharedPtr msg);
     void image_callback_left(const sensor_msgs::msg::Image::SharedPtr msg);
     void laserscan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
-    void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
+    void camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr left_msg, const sensor_msgs::msg::CameraInfo::SharedPtr right_msg);
 
     // Config makers
     bool make_lpslam_config();
@@ -79,7 +81,10 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_laserScanSubsription;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_leftImageSubscription;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr m_rightImageSubscription;
-    rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr m_cameraInfoSubscription;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>> m_leftCameraInfoSubscription;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>> m_rightCameraInfoSubscription;
+    std::shared_ptr<message_filters::TimeSynchronizer<sensor_msgs::msg::CameraInfo, sensor_msgs::msg::CameraInfo>>
+            m_camInfoSynchronizer;
 
     // Timers
     std::shared_ptr<rclcpp::TimerBase> m_pointcloud_timer;

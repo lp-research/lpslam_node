@@ -27,7 +27,7 @@ OpenVSLAMNode::OpenVSLAMNode(const rclcpp::NodeOptions & options) : LpBaseNode(o
     setSubscribers();
     setPublishers();
 
-    if (m_cameraInfoTopic.empty()) {
+    if (!m_useRosCameraInfo) {
         // Camera calibration files won't be read from topic.
         // Starting SLAM manually.
         startSlam();
@@ -124,22 +124,29 @@ void OpenVSLAMNode::setSubscribers()
         m_synchronizer->registerCallback(&OpenVSLAMNode::image_callback_stereo, this);
     }
 
-    if (!m_cameraInfoTopic.empty())
+    if (m_useRosCameraInfo)
     {
         // allow for relaxed QoS for image in order to match
         // the topic settings
-        auto video_qos = rclcpp::QoS(rclcpp::SensorDataQoS());
-        video_qos.keep_last(10);
+        rmw_qos_profile_t video_qos = rmw_qos_profile_sensor_data;
+        video_qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+        video_qos.depth = 10;
         if (m_qosReliability == "best_effort") {
-            video_qos.best_effort();
+            video_qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
         } else {
             // reliable
-            video_qos.reliable();
+            video_qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
         }
 
-        m_cameraInfoSubscription = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            m_cameraInfoTopic, video_qos,
-            std::bind(&OpenVSLAMNode::camera_info_callback, this, std::placeholders::_1));
+        m_rightCameraInfoSubscription =
+            std::make_shared<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>>(
+                this, m_rightCameraInfoTopic, video_qos);
+        m_leftCameraInfoSubscription = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>>(
+            this, m_leftCameraInfoTopic, video_qos);
+        m_camInfoSynchronizer = std::make_shared<
+            message_filters::TimeSynchronizer<sensor_msgs::msg::CameraInfo, sensor_msgs::msg::CameraInfo>>(
+                *m_leftCameraInfoSubscription, *m_rightCameraInfoSubscription, 10);
+        m_camInfoSynchronizer->registerCallback(&OpenVSLAMNode::camera_info_callback, this);
     }
 }
 
@@ -392,6 +399,11 @@ void OpenVSLAMNode::image_callback_stereo(
         return;
     }
 
+    if (m_useRosCameraInfo && !m_cameraConfigured) {
+        RCLCPP_WARN(get_logger(), "Camera calibration file could not be created from camera info topics. Check your configuration.");
+        return;
+    }
+
     if (!m_useOdometry) {
         // Don't continue if there is no odometry data
         RCLCPP_WARN(get_logger(), "Odometry data was disabled, skipping frame");
@@ -597,7 +609,7 @@ void OpenVSLAMNode::laserscan_callback(const sensor_msgs::msg::LaserScan::Shared
     RCLCPP_DEBUG(get_logger(), "Laser data dispatched");
 }
 
-void OpenVSLAMNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
+void OpenVSLAMNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr left_msg, const sensor_msgs::msg::CameraInfo::SharedPtr right_msg)
 {
     if (m_cameraConfigured)
     {
@@ -605,7 +617,7 @@ void OpenVSLAMNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::Sha
     }
 
     // Make OpenVSLAM config-file
-    if (!make_openvslam_config(msg))
+    if (!make_openvslam_config(left_msg, right_msg))
     {
         return;
     }
