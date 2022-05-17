@@ -392,17 +392,17 @@ bool LpBaseNode::make_openvslam_config(const sensor_msgs::msg::CameraInfo::Share
 
     // Stereo rectification parameters
     configNode["StereoRectifier"]["model"] = "perspective";
-    std::vector<double> Dl(std::begin(left_msg->d), std::end(left_msg->d));
-    std::vector<double> Rl(std::begin(left_msg->r), std::end(left_msg->r));
-    std::vector<double> Kl(std::begin(left_msg->k), std::end(left_msg->k));
+    const std::vector<double> Dl(std::begin(left_msg->d), std::end(left_msg->d));
+    const std::vector<double> Rl(std::begin(left_msg->r), std::end(left_msg->r));
+    const std::vector<double> Kl(std::begin(left_msg->k), std::end(left_msg->k));
 
     configNode["StereoRectifier"]["K_left"] = Kl;
     configNode["StereoRectifier"]["D_left"]= Dl;
     configNode["StereoRectifier"]["R_left"] = Rl;
 
-    std::vector<double> Dr(std::begin(right_msg->d), std::end(right_msg->d));
-    std::vector<double> Rr(std::begin(right_msg->r), std::end(right_msg->r));
-    std::vector<double> Kr(std::begin(right_msg->k), std::end(right_msg->k));
+    const std::vector<double> Dr(std::begin(right_msg->d), std::end(right_msg->d));
+    const std::vector<double> Rr(std::begin(right_msg->r), std::end(right_msg->r));
+    const std::vector<double> Kr(std::begin(right_msg->k), std::end(right_msg->k));
 
     configNode["StereoRectifier"]["K_right"] = Kr;
     configNode["StereoRectifier"]["D_right"] = Dr;

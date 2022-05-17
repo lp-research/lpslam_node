@@ -388,7 +388,7 @@ void OpenVSLAMNode::image_callback_stereo(
         return;
     }
 
-    if (m_useRosCameraInfo && !m_cameraConfigured) {
+    if (m_useRosCameraInfo && !isCameraConfigured()) {
         RCLCPP_WARN(get_logger(), "Camera calibration file could not be created from camera info topics. Check your configuration.");
         return;
     }
@@ -600,7 +600,7 @@ void OpenVSLAMNode::laserscan_callback(const sensor_msgs::msg::LaserScan::Shared
 
 void OpenVSLAMNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr left_msg, const sensor_msgs::msg::CameraInfo::SharedPtr right_msg)
 {
-    if (m_cameraConfigured)
+    if (isCameraConfigured())
     {
         return;
     }
@@ -615,7 +615,7 @@ void OpenVSLAMNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::Sha
     startSlam();
 
     // Once camera was configured, no more actions needed here
-    m_cameraConfigured = true;
+    setCameraConfigured(true);
 }
 
 void OpenVSLAMNode::stopSlam()
