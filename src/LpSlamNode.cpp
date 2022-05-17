@@ -59,7 +59,7 @@ LpSlamNode::LpSlamNode(const rclcpp::NodeOptions & options) : LpBaseNode(options
     setTimers();
 
     if (!setCameraPlacement()) {
-        RCLCPP_INFO(get_logger(), "No camera transform available, assuming it's mounted at z = 0.0 for now");
+        RCLCPP_WARN(get_logger(), "No camera transform available, assuming it's mounted at z = 0.0 for now");
         m_cameraZ = 0.0;
     }
 }
