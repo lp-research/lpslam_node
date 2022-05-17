@@ -159,6 +159,7 @@ private:
     // (such as Map and PointClounds)
     bool m_slamStarted;
     std::mutex m_slamStartedMutex;
+    std::mutex m_cameraConfiguredMutex;
 
     // Camera color encoding OpenVSLAM parameter
     std::string m_openVSlam_cameraEncoding;
@@ -188,6 +189,18 @@ protected:
     {
         std::lock_guard<std::mutex> lock(m_openVSlam_cameraEncodingMutex);
         return m_openVSlam_cameraEncoding;
+    }
+
+    inline void setCameraConfigured(const bool camera_configured)
+    {
+       std::lock_guard<std::mutex> lock(m_cameraConfiguredMutex);
+       m_cameraConfigured = camera_configured; 
+    }
+
+    inline bool isCameraConfigured()
+    {
+        std::lock_guard<std::mutex> lock(m_cameraConfiguredMutex);
+        return m_cameraConfigured;
     }
 };
 
