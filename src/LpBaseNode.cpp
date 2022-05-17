@@ -468,9 +468,11 @@ bool LpBaseNode::setCameraPlacement()
         return true;
 
     } catch (tf2::TransformException & ex) {
-        RCLCPP_INFO(
-        this->get_logger(), "Could not transform %s to %s: %s",
-        m_camera_frame_id.c_str(), m_base_frame_id.c_str(), ex.what());
+        RCLCPP_ERROR(
+            get_logger(), 
+            "Could not transform %s to %s: %s",
+            m_camera_frame_id.c_str(), m_base_frame_id.c_str(),
+            ex.what());
         return false;
     }
 }
